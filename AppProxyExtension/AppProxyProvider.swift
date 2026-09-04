@@ -25,13 +25,8 @@ class AppProxyProvider: NEAppProxyProvider {
         }
         
         let remoteHost = flow.remoteHostname ?? ""
-        // 从remoteEndpoint获取端口
-        var remotePort: UInt16 = 80
-        if let endpoint = flow.remoteEndpoint as? NWHostEndpoint {
-            remotePort = UInt16(endpoint.port) ?? 80
-        }
         
-        NSLog("[AppProxy] TCP流: \(remoteHost):\(remotePort)")
+        NSLog("[AppProxy] TCP流: \(remoteHost)")
         
         if isExcluded(remoteHost) {
             NSLog("[AppProxy] 域名排除，直接放行: \(remoteHost)")
@@ -49,8 +44,9 @@ class AppProxyProvider: NEAppProxyProvider {
             NSLog("[AppProxy] Rewrite命中: \(remoteHost) -> \(redirectURL)")
         }
         
-        let endpoint = NWHostEndpoint(hostname: remoteHost, port: "\(remotePort)")
-        let connection = self.createTCPConnection(to: endpoint, enableTLS: remotePort == 443, tlsParameters: nil, delegate: nil)
+        // 创建到目标的连接（默认443端口HTTPS）
+        let endpoint = NWHostEndpoint(hostname: remoteHost, port: "443")
+        let connection = self.createTCPConnection(to: endpoint, enableTLS: true, tlsParameters: nil, delegate: nil)
         
         tcpFlow.readData { [weak self] data, error in
             guard let data = data, !data.isEmpty else {
@@ -62,7 +58,8 @@ class AppProxyProvider: NEAppProxyProvider {
             
             var modifiedData = data
             
-            if remotePort == 80, let requestStr = String(data: data, encoding: .utf8),
+            // 尝试检测HTTP请求并添加自定义头
+            if let requestStr = String(data: data, encoding: .utf8),
                requestStr.hasPrefix("GET") || requestStr.hasPrefix("POST") {
                 modifiedData = self?.addCustomHeaders(to: requestStr) ?? data
                 NSLog("[AppProxy] HTTP请求已修改，添加自定义头")
