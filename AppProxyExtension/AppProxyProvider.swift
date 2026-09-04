@@ -116,7 +116,7 @@ class AppProxyProvider: NEAppProxyProvider {
                     readClient()
                 } else {
                     clientClosed = true
-                    connection.closeWriteWithError(nil)
+                    connection.cancel()
                     if serverClosed { flow.closeReadWithError(nil) }
                 }
             }
