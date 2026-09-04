@@ -1,5 +1,4 @@
 import NetworkExtension
-import Network
 
 class AppProxyProvider: NEAppProxyProvider {
     
@@ -117,7 +116,7 @@ class AppProxyProvider: NEAppProxyProvider {
                     readClient()
                 } else {
                     clientClosed = true
-                    connection.closeWrite()
+                    connection.closeWriteWithError(nil)
                     if serverClosed { flow.closeReadWithError(nil) }
                 }
             }
