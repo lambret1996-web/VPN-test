@@ -10,29 +10,27 @@ class ViewController: UIViewController, WKNavigationDelegate {
     var cacheSwitch: UISwitch!
     var statusLabel: UILabel!
     var excludeField: UITextField!
+    var statsLabel: UILabel!
+    var statsTimer: Timer?
     
-    // App Proxy 管理器
-    var proxyManager: NEAppProxyProviderManager?
-    
-    // 测试规则（硬编码）
     let testRules = [
         "Rewrite: example.com -> baidu.com",
-        "Header: 添加 X-Proxy-Demo: Test123",
-        "Block: doubleclick.net"
+        "Rewrite: iana.org -> bing.com",
+        "Header: 添加 X-Proxy-Demo + 修改UA",
+        "Block: 12个广告追踪域名"
     ]
     
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        title = "App-Proxy Demo"
+        title = "App-Proxy Demo v2.0"
         setupUI()
         loadWebView()
-        log("Demo 启动完成")
-        log("测试规则已加载：\(testRules.count) 条")
+        log("Demo v2.0 启动完成")
+        log("功能：HTTP 302重定向 + 请求头修改 + 域名拦截 + 统计")
     }
     
     func setupUI() {
-        // 顶部控制栏
         let controlView = UIView()
         controlView.backgroundColor = .secondarySystemBackground
         controlView.translatesAutoresizingMaskIntoConstraints = false
@@ -40,77 +38,101 @@ class ViewController: UIViewController, WKNavigationDelegate {
         
         // 代理开关
         let proxyLabel = UILabel()
-        proxyLabel.text = "App-Proxy 代理"
+        proxyLabel.text = "代理"
         proxyLabel.font = .systemFont(ofSize: 14)
         proxyLabel.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(proxyLabel)
         
         proxySwitch = UISwitch()
-        proxySwitch.isOn = false
         proxySwitch.addTarget(self, action: #selector(proxySwitchChanged), for: .valueChanged)
         proxySwitch.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(proxySwitch)
         
         // 缓存开关
         let cacheLabel = UILabel()
-        cacheLabel.text = "无缓存模式"
+        cacheLabel.text = "无缓存"
         cacheLabel.font = .systemFont(ofSize: 14)
         cacheLabel.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(cacheLabel)
         
         cacheSwitch = UISwitch()
-        cacheSwitch.isOn = false
         cacheSwitch.addTarget(self, action: #selector(cacheSwitchChanged), for: .valueChanged)
         cacheSwitch.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(cacheSwitch)
         
         // 状态标签
         statusLabel = UILabel()
-        statusLabel.text = "代理：未启动"
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabel
+        statusLabel.text = "未启动"
+        statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        statusLabel.textColor = .systemRed
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(statusLabel)
         
-        // 域名排除输入
+        // 统计面板
+        statsLabel = UILabel()
+        statsLabel.text = "请求:0 拦截:0 重定向:0 改头:0 排除:0"
+        statsLabel.font = .systemFont(ofSize: 11)
+        statsLabel.textColor = .secondaryLabel
+        statsLabel.numberOfLines = 0
+        statsLabel.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(statsLabel)
+        
+        // 排除域名
         let excludeLabel = UILabel()
-        excludeLabel.text = "排除域名(逗号分隔):"
+        excludeLabel.text = "排除:"
         excludeLabel.font = .systemFont(ofSize: 12)
         excludeLabel.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(excludeLabel)
         
         excludeField = UITextField()
-        excludeField.placeholder = "github.com,cloudflare.com"
+        excludeField.text = "github.com,cloudflare.com"
         excludeField.font = .systemFont(ofSize: 12)
         excludeField.borderStyle = .roundedRect
         excludeField.autocapitalizationType = .none
         excludeField.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(excludeField)
         
-        // 测试按钮
+        // 按钮行1
         let testBtn = UIButton(type: .system)
-        testBtn.setTitle("测试 Rewrite (访问example.com)", for: .normal)
+        testBtn.setTitle("测试example→百度", for: .normal)
+        testBtn.titleLabel?.font = .systemFont(ofSize: 12)
         testBtn.addTarget(self, action: #selector(testRewrite), for: .touchUpInside)
         testBtn.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(testBtn)
         
-        let clearBtn = UIButton(type: .system)
-        clearBtn.setTitle("清空日志", for: .normal)
-        clearBtn.addTarget(self, action: #selector(clearLog), for: .touchUpInside)
-        clearBtn.translatesAutoresizingMaskIntoConstraints = false
-        controlView.addSubview(clearBtn)
+        let testBtn2 = UIButton(type: .system)
+        testBtn2.setTitle("测试iana→必应", for: .normal)
+        testBtn2.titleLabel?.font = .systemFont(ofSize: 12)
+        testBtn2.addTarget(self, action: #selector(testRewrite2), for: .touchUpInside)
+        testBtn2.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(testBtn2)
+        
+        // 按钮行2
+        let clearLogBtn = UIButton(type: .system)
+        clearLogBtn.setTitle("清空日志", for: .normal)
+        clearLogBtn.titleLabel?.font = .systemFont(ofSize: 12)
+        clearLogBtn.addTarget(self, action: #selector(clearLog), for: .touchUpInside)
+        clearLogBtn.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(clearLogBtn)
+        
+        let removeVPNBtn = UIButton(type: .system)
+        removeVPNBtn.setTitle("删除VPN配置", for: .normal)
+        removeVPNBtn.titleLabel?.font = .systemFont(ofSize: 12)
+        removeVPNBtn.setTitleColor(.systemRed, for: .normal)
+        removeVPNBtn.addTarget(self, action: #selector(removeVPNConfig), for: .touchUpInside)
+        removeVPNBtn.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(removeVPNBtn)
         
         // WebView
-        let webConfig = WKWebViewConfiguration()
-        webView = WKWebView(frame: .zero, configuration: webConfig)
+        webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
         webView.navigationDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
         
-        // 日志面板
+        // 日志
         logTextView = UITextView()
         logTextView.isEditable = false
-        logTextView.font = .systemFont(ofSize: 11)
+        logTextView.font = .systemFont(ofSize: 10)
         logTextView.backgroundColor = .black
         logTextView.textColor = .green
         logTextView.translatesAutoresizingMaskIntoConstraints = false
@@ -120,37 +142,46 @@ class ViewController: UIViewController, WKNavigationDelegate {
             controlView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             controlView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             controlView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            controlView.heightAnchor.constraint(equalToConstant: 180),
+            controlView.heightAnchor.constraint(equalToConstant: 200),
             
-            proxyLabel.topAnchor.constraint(equalTo: controlView.topAnchor, constant: 10),
-            proxyLabel.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 15),
+            proxyLabel.topAnchor.constraint(equalTo: controlView.topAnchor, constant: 8),
+            proxyLabel.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 12),
             proxySwitch.centerYAnchor.constraint(equalTo: proxyLabel.centerYAnchor),
-            proxySwitch.leadingAnchor.constraint(equalTo: proxyLabel.trailingAnchor, constant: 10),
+            proxySwitch.leadingAnchor.constraint(equalTo: proxyLabel.trailingAnchor, constant: 6),
             
             cacheLabel.centerYAnchor.constraint(equalTo: proxyLabel.centerYAnchor),
-            cacheLabel.leadingAnchor.constraint(equalTo: proxySwitch.trailingAnchor, constant: 20),
+            cacheLabel.leadingAnchor.constraint(equalTo: proxySwitch.trailingAnchor, constant: 15),
             cacheSwitch.centerYAnchor.constraint(equalTo: proxyLabel.centerYAnchor),
-            cacheSwitch.leadingAnchor.constraint(equalTo: cacheLabel.trailingAnchor, constant: 10),
+            cacheSwitch.leadingAnchor.constraint(equalTo: cacheLabel.trailingAnchor, constant: 6),
             
-            statusLabel.topAnchor.constraint(equalTo: proxyLabel.bottomAnchor, constant: 8),
-            statusLabel.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 15),
+            statusLabel.centerYAnchor.constraint(equalTo: proxyLabel.centerYAnchor),
+            statusLabel.trailingAnchor.constraint(equalTo: controlView.trailingAnchor, constant: -12),
             
-            excludeLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 8),
-            excludeLabel.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 15),
+            statsLabel.topAnchor.constraint(equalTo: proxyLabel.bottomAnchor, constant: 6),
+            statsLabel.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 12),
+            statsLabel.trailingAnchor.constraint(equalTo: controlView.trailingAnchor, constant: -12),
+            
+            excludeLabel.topAnchor.constraint(equalTo: statsLabel.bottomAnchor, constant: 6),
+            excludeLabel.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 12),
             excludeField.centerYAnchor.constraint(equalTo: excludeLabel.centerYAnchor),
-            excludeField.leadingAnchor.constraint(equalTo: excludeLabel.trailingAnchor, constant: 8),
-            excludeField.trailingAnchor.constraint(equalTo: controlView.trailingAnchor, constant: -15),
-            excludeField.heightAnchor.constraint(equalToConstant: 28),
+            excludeField.leadingAnchor.constraint(equalTo: excludeLabel.trailingAnchor, constant: 6),
+            excludeField.trailingAnchor.constraint(equalTo: controlView.trailingAnchor, constant: -12),
+            excludeField.heightAnchor.constraint(equalToConstant: 26),
             
-            testBtn.topAnchor.constraint(equalTo: excludeLabel.bottomAnchor, constant: 10),
-            testBtn.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 15),
-            clearBtn.centerYAnchor.constraint(equalTo: testBtn.centerYAnchor),
-            clearBtn.leadingAnchor.constraint(equalTo: testBtn.trailingAnchor, constant: 20),
+            testBtn.topAnchor.constraint(equalTo: excludeLabel.bottomAnchor, constant: 8),
+            testBtn.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 12),
+            testBtn2.centerYAnchor.constraint(equalTo: testBtn.centerYAnchor),
+            testBtn2.leadingAnchor.constraint(equalTo: testBtn.trailingAnchor, constant: 12),
+            
+            clearLogBtn.topAnchor.constraint(equalTo: testBtn.bottomAnchor, constant: 4),
+            clearLogBtn.leadingAnchor.constraint(equalTo: controlView.leadingAnchor, constant: 12),
+            removeVPNBtn.centerYAnchor.constraint(equalTo: clearLogBtn.centerYAnchor),
+            removeVPNBtn.leadingAnchor.constraint(equalTo: clearLogBtn.trailingAnchor, constant: 12),
             
             webView.topAnchor.constraint(equalTo: controlView.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.heightAnchor.constraint(equalTo: view.heightAnchor, multiplier: 0.45),
+            webView.heightAnchor.constraint(equalTo: view.heightAnchor, multiplier: 0.4),
             
             logTextView.topAnchor.constraint(equalTo: webView.bottomAnchor),
             logTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -160,9 +191,7 @@ class ViewController: UIViewController, WKNavigationDelegate {
     }
     
     func loadWebView() {
-        if let url = URL(string: "https://www.example.com") {
-            webView.load(URLRequest(url: url))
-        }
+        webView.load(URLRequest(url: URL(string: "https://www.example.com")!))
     }
     
     @objc func proxySwitchChanged() {
@@ -175,36 +204,56 @@ class ViewController: UIViewController, WKNavigationDelegate {
     
     @objc func cacheSwitchChanged() {
         if cacheSwitch.isOn {
-            // 禁用缓存
             webView.configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
             URLCache.shared.removeAllCachedResponses()
-            log("无缓存模式：已开启，所有请求强制走网络")
+            log("无缓存模式开启")
         } else {
-            log("无缓存模式：已关闭，恢复正常缓存")
+            log("无缓存模式关闭")
         }
         webView.reload()
     }
     
     @objc func testRewrite() {
-        log("测试 Rewrite：访问 example.com，预期跳转到 baidu.com")
-        if let url = URL(string: "https://www.example.com") {
-            let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
-            webView.load(request)
-        }
+        log("测试: example.com → baidu.com (HTTP 302)")
+        let req = URLRequest(url: URL(string: "http://www.example.com")!, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
+        webView.load(req)
+    }
+    
+    @objc func testRewrite2() {
+        log("测试: iana.org → bing.com (HTTP 302)")
+        let req = URLRequest(url: URL(string: "http://www.iana.org")!, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
+        webView.load(req)
     }
     
     @objc func clearLog() {
         logTextView.text = ""
     }
     
+    @objc func removeVPNConfig() {
+        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, _ in
+            for manager in managers ?? [] {
+                if manager.localizedDescription == "AppProxyDemo" {
+                    manager.removeFromPreferences { _ in
+                        self?.log("VPN配置已删除")
+                        self?.proxySwitch.isOn = false
+                        self?.statusLabel.text = "未启动"
+                        self?.statusLabel.textColor = .systemRed
+                    }
+                }
+            }
+        }
+    }
+    
     func startProxy() {
         log("正在启动 App-Proxy...")
-        statusLabel.text = "代理：启动中..."
+        statusLabel.text = "启动中"
+        statusLabel.textColor = .systemOrange
         
         NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
             if let error = error {
-                self?.log("加载代理配置失败: \(error.localizedDescription)")
-                self?.statusLabel.text = "代理：启动失败"
+                self?.log("加载失败: \(error.localizedDescription)")
+                self?.statusLabel.text = "失败"
+                self?.statusLabel.textColor = .systemRed
                 self?.proxySwitch.isOn = false
                 return
             }
@@ -229,21 +278,24 @@ class ViewController: UIViewController, WKNavigationDelegate {
             
             manager.saveToPreferences { error in
                 if let error = error {
-                    self?.log("保存代理配置失败: \(error.localizedDescription)")
-                    self?.statusLabel.text = "代理：启动失败"
+                    self?.log("保存失败: \(error.localizedDescription)")
+                    self?.statusLabel.text = "失败"
+                    self?.statusLabel.textColor = .systemRed
                     self?.proxySwitch.isOn = false
                     return
                 }
                 manager.loadFromPreferences { _ in
                     do {
                         try manager.connection.startVPNTunnel()
-                        self?.log("App-Proxy 启动成功！")
-                        self?.log("代理进程 Bundle ID: com.demo.AppProxyDemo.AppProxyExtension")
-                        self?.statusLabel.text = "代理：运行中"
+                        self?.log("✅ App-Proxy 启动成功")
+                        self?.statusLabel.text = "运行中"
+                        self?.statusLabel.textColor = .systemGreen
+                        self?.startStatsTimer()
                         self?.webView.reload()
                     } catch {
-                        self?.log("启动隧道失败: \(error.localizedDescription)")
-                        self?.statusLabel.text = "代理：启动失败"
+                        self?.log("启动失败: \(error.localizedDescription)")
+                        self?.statusLabel.text = "失败"
+                        self?.statusLabel.textColor = .systemRed
                         self?.proxySwitch.isOn = false
                     }
                 }
@@ -256,37 +308,63 @@ class ViewController: UIViewController, WKNavigationDelegate {
             if let manager = managers?.first(where: { $0.localizedDescription == "AppProxyDemo" }) {
                 manager.connection.stopVPNTunnel()
                 self?.log("App-Proxy 已停止")
-                self?.statusLabel.text = "代理：未启动"
+                self?.statusLabel.text = "已停止"
+                self?.statusLabel.textColor = .systemRed
+                self?.stopStatsTimer()
             }
         }
+    }
+    
+    func startStatsTimer() {
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.updateStats()
+        }
+    }
+    
+    func stopStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+    }
+    
+    func updateStats() {
+        let defaults = UserDefaults(suiteName: "group.com.demo.AppProxyDemo")
+        let total = defaults?.integer(forKey: "totalRequests") ?? 0
+        let blocked = defaults?.integer(forKey: "blocked") ?? 0
+        let redirected = defaults?.integer(forKey: "redirected") ?? 0
+        let modified = defaults?.integer(forKey: "headerModified") ?? 0
+        let excluded = defaults?.integer(forKey: "excluded") ?? 0
+        statsLabel.text = "总请求:\(total) 拦截:\(blocked) 重定向:\(redirected) 改头:\(modified) 排除:\(excluded)"
     }
     
     // MARK: - WKNavigationDelegate
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         if let url = webView.url {
-            log("请求开始: \(url.absoluteString)")
+            log("→ \(url.absoluteString)")
         }
     }
     
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if let url = webView.url {
-            log("加载完成: \(url.absoluteString)")
+            log("✓ \(url.absoluteString)")
             if url.absoluteString.contains("baidu.com") {
-                log("✅ Rewrite 成功！example.com 已跳转到 baidu.com")
+                log("🎉 Rewrite成功: example.com → baidu.com")
+            }
+            if url.absoluteString.contains("bing.com") {
+                log("🎉 Rewrite成功: iana.org → bing.com")
             }
         }
     }
     
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        log("加载失败: \(error.localizedDescription)")
+        log("✗ \(error.localizedDescription)")
     }
     
     func log(_ message: String) {
         DispatchQueue.main.async {
-            let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-            self.logTextView.text += "[\(timestamp)] \(message)\n"
-            let bottom = NSRange(location: self.logTextView.text.count - 1, length: 1)
-            self.logTextView.scrollRangeToVisible(bottom)
+            let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+            self.logTextView.text += "[\(ts)] \(message)\n"
+            let range = NSRange(location: self.logTextView.text.count - 1, length: 1)
+            self.logTextView.scrollRangeToVisible(range)
         }
     }
 }
