@@ -1,0 +1,46 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Build IPA (Unsigned)
+        run: |
+          set -e
+          
+          # 构建
+          xcodebuild \
+            -project AppProxyDemo.xcodeproj \
+            -scheme AppProxyDemo \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          
+          # 找到.app
+          APP_PATH=$(find build/Build/Products -name "AppProxyDemo.app" -type d | head -1)
+          echo "App路径: $APP_PATH"
+          
+          # 创建IPA
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r AppProxyDemo.ipa Payload
+          ls -lh AppProxyDemo.ipa
+          
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppProxyDemo-ipa
+          path: AppProxyDemo.ipa
